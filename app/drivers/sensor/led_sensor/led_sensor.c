@@ -7,6 +7,8 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 
+#include "led_sensor.h"
+
 LOG_MODULE_REGISTER(led_sensor, LOG_LEVEL_INF);
 
 #define DT_DRV_COMPAT gorral_led_sensor
@@ -17,6 +19,7 @@ struct gpio_dt_spec led;
 
 struct led_sensor_data {
 bool led_is_on;
+int32_t runtime_parameter;
 };
 
 static int led_sensor_sample_fetch(const struct device *dev,
@@ -34,7 +37,8 @@ return ret;
 }
 
 data->led_is_on = true;
-LOG_INF("sensor_sample_fetch: LED ON");
+LOG_INF("sensor_sample_fetch: LED ON, runtime_parameter=%d",
+data->runtime_parameter);
 
 return 0;
 }
@@ -59,11 +63,25 @@ return ret;
 data->led_is_on = false;
 
 if (val != NULL) {
-val->val1 = 0;
+val->val1 = data->runtime_parameter;
 val->val2 = 0;
 }
 
-LOG_INF("sensor_channel_get: LED OFF");
+LOG_INF("sensor_channel_get: LED OFF, runtime_parameter=%d",
+data->runtime_parameter);
+
+return 0;
+}
+
+static int led_sensor_set_runtime_parameter_impl(const struct device *dev,
+ int32_t runtime_parameter)
+{
+struct led_sensor_data *data = dev->data;
+
+data->runtime_parameter = runtime_parameter;
+
+LOG_INF("custom API: runtime_parameter changed to %d",
+data->runtime_parameter);
 
 return 0;
 }
@@ -71,18 +89,25 @@ return 0;
 static int led_sensor_init(const struct device *dev)
 {
 const struct led_sensor_config *config = dev->config;
+struct led_sensor_data *data = dev->data;
 
 if (!gpio_is_ready_dt(&config->led)) {
 LOG_ERR("LED GPIO device is not ready");
 return -ENODEV;
 }
 
+data->runtime_parameter = 0;
+data->led_is_on = false;
+
 return gpio_pin_configure_dt(&config->led, GPIO_OUTPUT_INACTIVE);
 }
 
-static const struct sensor_driver_api led_sensor_api = {
+static const struct led_sensor_driver_api led_sensor_api = {
+.sensor_api = {
 .sample_fetch = led_sensor_sample_fetch,
 .channel_get = led_sensor_channel_get,
+},
+.set_runtime_parameter = led_sensor_set_runtime_parameter_impl,
 };
 
 #define LED_SENSOR_DEFINE(inst)\
